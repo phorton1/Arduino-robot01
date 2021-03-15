@@ -1,0 +1,273 @@
+#include "myDebug.h"
+
+
+#define MIN_ABS_SPEED 20
+
+double motorSpeedFactorLeft = 0.6;
+double motorSpeedFactorRight = 0.5;
+//MOTOR CONTROLLER
+int ENA = 5;
+int IN1 = 6;
+int IN2 = 7;
+int IN3 = 8;
+int IN4 = 9;
+int ENB = 10;
+
+
+class LMotorController
+{
+protected:
+    int _ena, _in1, _in2, _enb, _in3, _in4;
+    int _currentSpeed;
+    double _motorAConst, _motorBConst;
+public:
+    LMotorController(int ena, int in1, int in2, int enb, int in3, int in4, double motorAConst, double motorBConst);
+    void move(int leftSpeed, int rightSpeed, int minAbsSpeed);
+    void move(int speed);
+    void move(int speed, int minAbsSpeed);
+    void turnLeft(int speed, bool kick);
+    void turnRight(int speed, bool kick);
+    void stopMoving();
+};
+
+
+LMotorController::LMotorController(int ena, int in1, int in2, int enb, int in3, int in4, double motorAConst, double motorBConst)
+{
+    _motorAConst = motorAConst;
+    _motorBConst = motorBConst;
+
+	_ena = ena;
+	_in1 = in1;
+	_in2 = in2;
+	_enb = enb;
+	_in3 = in3;
+	_in4 = in4;
+
+	pinMode(_ena, OUTPUT);
+	pinMode(_in1, OUTPUT);
+	pinMode(_in2, OUTPUT);
+
+	pinMode(_enb, OUTPUT);
+	pinMode(_in3, OUTPUT);
+	pinMode(_in4, OUTPUT);
+}
+
+
+
+void LMotorController::move(int leftSpeed, int rightSpeed, int minAbsSpeed)
+{
+    if (rightSpeed < 0)
+    {
+        rightSpeed = min(rightSpeed, -1*minAbsSpeed);
+        rightSpeed = max(rightSpeed, -255);
+    }
+    else if (rightSpeed > 0)
+    {
+        rightSpeed = max(rightSpeed, minAbsSpeed);
+        rightSpeed = min(rightSpeed, 255);
+    }
+
+    int realRightSpeed = map(abs(rightSpeed), 0, 255, minAbsSpeed, 255);
+
+    if (leftSpeed < 0)
+    {
+        leftSpeed = min(leftSpeed, -1*minAbsSpeed);
+        leftSpeed = max(leftSpeed, -255);
+    }
+    else if (leftSpeed > 0)
+    {
+        leftSpeed = max(leftSpeed, minAbsSpeed);
+        leftSpeed = min(leftSpeed, 255);
+    }
+
+    int realLeftSpeed = map(abs(leftSpeed), 0, 255, minAbsSpeed, 255);
+
+    digitalWrite(_in3, rightSpeed > 0 ? HIGH : LOW);
+    digitalWrite(_in4, rightSpeed > 0 ? LOW : HIGH);
+    digitalWrite(_in1, leftSpeed > 0 ? HIGH : LOW);
+    digitalWrite(_in2, leftSpeed > 0 ? LOW : HIGH);
+    analogWrite(_ena, realRightSpeed * _motorAConst);
+    analogWrite(_enb, realLeftSpeed * _motorBConst);
+}
+
+
+void LMotorController::move(int speed, int minAbsSpeed)
+{
+    int direction = 1;
+
+    if (speed < 0)
+    {
+        direction = -1;
+
+        speed = min(speed, -1*minAbsSpeed);
+        speed = max(speed, -255);
+    }
+    else
+    {
+        speed = max(speed, minAbsSpeed);
+        speed = min(speed, 255);
+    }
+
+    if (speed == _currentSpeed) return;
+
+    int realSpeed = max(minAbsSpeed, abs(speed));
+
+    digitalWrite(_in1, speed > 0 ? HIGH : LOW);
+    digitalWrite(_in2, speed > 0 ? LOW : HIGH);
+    digitalWrite(_in3, speed > 0 ? HIGH : LOW);
+    digitalWrite(_in4, speed > 0 ? LOW : HIGH);
+    analogWrite(_ena, realSpeed * _motorAConst);
+    analogWrite(_enb, realSpeed * _motorBConst);
+
+    _currentSpeed = direction * realSpeed;
+}
+
+
+void LMotorController::move(int speed)
+{
+    if (speed == _currentSpeed) return;
+
+    if (speed > 255) speed = 255;
+    else if (speed < -255) speed = -255;
+
+    digitalWrite(_in1, speed > 0 ? HIGH : LOW);
+    digitalWrite(_in2, speed > 0 ? LOW : HIGH);
+    digitalWrite(_in3, speed > 0 ? HIGH : LOW);
+    digitalWrite(_in4, speed > 0 ? LOW : HIGH);
+    analogWrite(_ena, abs(speed) * _motorAConst);
+    analogWrite(_enb, abs(speed) * _motorBConst);
+
+    _currentSpeed = speed;
+}
+
+
+
+
+void LMotorController::turnLeft(int speed, bool kick)
+{
+    digitalWrite(_in1, HIGH);
+    digitalWrite(_in2, LOW);
+    digitalWrite(_in3, LOW);
+    digitalWrite(_in4, HIGH);
+
+    if (kick)
+    {
+        analogWrite(_ena, 255);
+        analogWrite(_enb, 255);
+
+        delay(100);
+    }
+
+    analogWrite(_ena, speed * _motorAConst);
+    analogWrite(_enb, speed * _motorBConst);
+}
+
+
+void LMotorController::turnRight(int speed, bool kick)
+{
+    digitalWrite(_in1, LOW);
+    digitalWrite(_in2, HIGH);
+    digitalWrite(_in3, HIGH);
+    digitalWrite(_in4, LOW);
+
+    if (kick)
+    {
+        analogWrite(_ena, 255);
+        analogWrite(_enb, 255);
+
+        delay(100);
+    }
+
+    analogWrite(_ena, speed * _motorAConst);
+    analogWrite(_enb, speed * _motorBConst);
+}
+
+
+void LMotorController::stopMoving()
+{
+    digitalWrite(_in1, LOW);
+    digitalWrite(_in2, LOW);
+    digitalWrite(_in3, LOW);
+    digitalWrite(_in4, LOW);
+    digitalWrite(_ena, HIGH);
+    digitalWrite(_enb, HIGH);
+
+    _currentSpeed = 0;
+}
+
+
+
+
+
+LMotorController motorController(ENA, IN1, IN2, ENB, IN3, IN4, motorSpeedFactorLeft, motorSpeedFactorRight);
+
+
+
+void setup()
+{
+    pinMode(13,OUTPUT);
+    digitalWrite(13,0);
+
+    Serial.begin(115200);
+    delay(1000);
+    display(0,"robot01.ino started",0);
+
+}
+
+
+uint32_t flasher = 0;
+int flash = 0;
+
+int left_motor = 0;
+int right_motor = 0;
+
+
+void loop()
+{
+    uint32_t now = millis();
+    if (now > flasher + 1000)
+    {
+        flash = flash ? 0 : 1;
+        digitalWrite(13,flash);
+        flasher = now;
+    }
+
+    if (Serial.available())
+    {
+        char c = Serial.read();
+        static int in_point = 0;
+        bool do_it = 0;
+
+        if (c == 'l')
+        {
+            left_motor = left_motor ? 0 : 1;
+            display(0,"LEFT %d",left_motor);
+            do_it = 1;
+        }
+        else if (c == 'r')
+        {
+            right_motor = right_motor ? 0 : 1;
+            display(0,"RIGHT %d",right_motor);
+            do_it = 1;
+        }
+
+        if (do_it)
+        {
+            if (!left_motor && !right_motor)
+            {
+                display(0,"stopMoving",0);
+                motorController.stopMoving();
+            }
+            else
+            {
+                display(0,"move(%d,%d)",left_motor,right_motor);
+                motorController.move(left_motor?MIN_ABS_SPEED:0, right_motor?MIN_ABS_SPEED:0, MIN_ABS_SPEED);
+            }
+        }
+    }
+
+
+//     if (counter % 2 == 0)
+//     else
+//         motorController.move(0, MIN_ABS_SPEED);
+}

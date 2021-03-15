@@ -1,0 +1,155 @@
+#include "myDebug.h"
+#include <Wire.h>
+#include "MPU6050.h"
+
+#define DEFAULT_SPEED 128
+
+#define MOTOR_ENA  5
+#define MOTOR_IN1  6
+#define MOTOR_IN2  7
+#define MOTOR_IN3  8
+#define MOTOR_IN4  9
+#define MOTOR_ENB  10
+
+#define SONAR_ECHO  2
+#define SONAR_TRIG  3
+
+MPU6050 mpu;
+
+
+
+void setup()
+{
+    Serial.begin(115200);
+
+	pinMode(MOTOR_ENA, OUTPUT);
+	pinMode(MOTOR_IN1, OUTPUT);
+	pinMode(MOTOR_IN2, OUTPUT);
+	pinMode(MOTOR_ENB, OUTPUT);
+	pinMode(MOTOR_IN4, OUTPUT);
+	pinMode(MOTOR_ENB, OUTPUT);
+
+    analogWrite(MOTOR_ENA,0);
+    digitalWrite(MOTOR_IN1,0);
+    digitalWrite(MOTOR_IN2,0);
+    analogWrite(MOTOR_ENB,0);
+    digitalWrite(MOTOR_IN3,0);
+    digitalWrite(MOTOR_IN4,0);
+
+    pinMode(SONAR_TRIG,OUTPUT);
+
+    pinMode(13,OUTPUT);
+    digitalWrite(13,0);
+
+    while(!mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G))
+    {
+        my_error("Could not find a valid MPU6050 sensor, check wiring!",0);
+        delay(500);
+    }
+
+    delay(1000);
+    display(0,"robot01.ino started",0);
+}
+
+
+
+void loop()
+{
+    static uint32_t flasher_time = 0;
+    static int flasher = 0;
+    if (millis() > flasher_time + 1000)
+    {
+        flasher = flasher ? 0 : 1;
+        digitalWrite(13,flasher);
+        flasher_time = millis();
+    }
+
+
+    static uint32_t sonar_time = 0;
+    if (0 && millis() > sonar_time + 1000)
+    {
+        // clear the trigger pin for 2 us then
+        // sets the trigPin HIGH for 10 us
+        //
+        // delays on the order of 10 milliseconds
+        // the maximum range is about 450cm  (4.5 meters)
+        //      or about 30000us (30 ms)
+        // with a delay 588us per cm
+        //      20 cm (8 inches) == about 1200 us or 1.2ms
+        //      100 cm (40 inches) == about 6000 us or 6ms
+        //      200 cm (80 inches, 2m) == about 12000 us or 12ms
+        //
+        //  #define MAX_USEFUL_SONAR_DELAY 30000      // 30ms about 6 meters
+        //
+        // this code must NOT be run on time critical thread
+
+        digitalWrite(SONAR_TRIG, 0);
+        delayMicroseconds(2);
+        digitalWrite(SONAR_TRIG, 1);
+        delayMicroseconds(10);
+        digitalWrite(SONAR_TRIG, 0);
+        long duration = pulseIn(SONAR_ECHO,HIGH);   // default is 1 second (1,000,000 us)
+        int distance = duration * 0.034 / 2;        // distance in CM
+        display(0,"distance=%d duration=%d",distance,duration);
+        sonar_time = millis();
+    }
+
+
+    static uint32_t gyro_time = 0;
+    if (millis() > gyro_time + 1000)
+    {
+        // Read normalized values
+        Vector normAccel = mpu.readNormalizeAccel();
+
+        // Calculate Pitch & Roll
+        int pitch = -(atan2(normAccel.XAxis, sqrt(normAccel.YAxis*normAccel.YAxis + normAccel.ZAxis*normAccel.ZAxis))*180.0)/M_PI;
+        int roll = (atan2(normAccel.YAxis, normAccel.ZAxis)*180.0)/M_PI;
+
+        display(0,"pitch(%d) roll(%d)",pitch,roll);
+        gyro_time = millis();
+    }
+
+
+    static int left_motor = 0;
+    static int right_motor = 0;
+    if (Serial.available())
+    {
+        char c = Serial.read();
+        static int in_point = 0;
+
+        if (c == 'l')
+        {
+            left_motor = left_motor ? 0 : 1;
+            display(0,"LEFT %d",left_motor);
+            if (left_motor)
+            {
+                analogWrite(MOTOR_ENA,DEFAULT_SPEED);
+                digitalWrite(MOTOR_IN1,0);
+                digitalWrite(MOTOR_IN2,1);  // forward
+            }
+            else
+            {
+                analogWrite(MOTOR_ENA,0);
+                digitalWrite(MOTOR_IN1,0);
+                digitalWrite(MOTOR_IN2,0);  // forward
+            }
+        }
+        else if (c == 'r')
+        {
+            right_motor = right_motor ? 0 : 1;
+            display(0,"RIGHT %d",right_motor);
+            if (right_motor)
+            {
+                analogWrite(MOTOR_ENB,DEFAULT_SPEED);
+                digitalWrite(MOTOR_IN3,0);
+                digitalWrite(MOTOR_IN4,1);
+            }
+            else
+            {
+                analogWrite(MOTOR_ENB,0);
+                digitalWrite(MOTOR_IN3,0);
+                digitalWrite(MOTOR_IN4,0);
+            }
+        }
+    }
+}
